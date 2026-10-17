@@ -1,0 +1,170 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  displayName  String   @map("display_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  memberships  TeamMember[]
+  assignedItems WorkItem[]   @relation("AssignedTo")
+  createdItems  WorkItem[]   @relation("CreatedBy")
+  comments      Comment[]
+  activities    Activity[]
+
+  @@map("users")
+}
+
+// ─── Teams ───────────────────────────────────────────────────────────────────
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  members   TeamMember[]
+  workItems WorkItem[]
+
+  @@map("teams")
+}
+
+// ─── Team Membership (join table with role) ──────────────────────────────────
+
+enum TeamRole {
+  VIEWER
+  MEMBER
+  LEAD
+  ADMIN
+}
+
+model TeamMember {
+  id     String   @id @default(uuid())
+  userId String   @map("user_id")
+  teamId String   @map("team_id")
+  role   TeamRole @default(MEMBER)
+
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+// ─── Work Items ──────────────────────────────────────────────────────────────
+
+enum WorkItemStatus {
+  OPEN
+  IN_PROGRESS
+  AWAITING_APPROVAL
+  RESOLVED
+  CLOSED
+}
+
+enum WorkItemPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model WorkItem {
+  id             String           @id @default(uuid())
+  title          String
+  description    String?
+  status         WorkItemStatus   @default(OPEN)
+  priority       WorkItemPriority @default(MEDIUM)
+  version        Int              @default(1)
+  idempotencyKey String?          @unique @map("idempotency_key")
+
+  teamId       String  @map("team_id")
+  createdById  String  @map("created_by_id")
+  assignedToId String? @map("assigned_to_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  team       Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdBy  User      @relation("CreatedBy", fields: [createdById], references: [id])
+  assignedTo User?     @relation("AssignedTo", fields: [assignedToId], references: [id])
+  comments   Comment[]
+  activities Activity[]
+
+  @@index([teamId])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([priority])
+  @@index([createdAt])
+  @@map("work_items")
+}
+
+// ─── Comments ────────────────────────────────────────────────────────────────
+
+model Comment {
+  id         String   @id @default(uuid())
+  content    String
+  workItemId String   @map("work_item_id")
+  authorId   String   @map("author_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id])
+
+  @@index([workItemId])
+  @@index([authorId])
+  @@map("comments")
+}
+
+// ─── Activity Log (audit trail) ──────────────────────────────────────────────
+
+enum ActivityAction {
+  CREATED
+  STATUS_CHANGE
+  ASSIGNMENT_CHANGE
+  PRIORITY_CHANGE
+  UPDATED
+  COMMENTED
+}
+
+model Activity {
+  id         String         @id @default(uuid())
+  action     ActivityAction
+  field      String?
+  oldValue   String?        @map("old_value")
+  newValue   String?        @map("new_value")
+  workItemId String         @map("work_item_id")
+  performedById String      @map("performed_by_id")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  workItem    WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  performedBy User     @relation(fields: [performedById], references: [id])
+
+  @@index([workItemId])
+  @@index([performedById])
+  @@index([createdAt])
+  @@map("activities")
+}
