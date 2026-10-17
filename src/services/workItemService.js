@@ -324,15 +324,14 @@ async function claimWorkItem(workItemId, { version }, userId) {
     // Conditional atomic update: only update if still unassigned AND version matches
     // This ensures concurrent claims are serialized by the database
     const updateResult = await tx.$executeRaw`
-      UPDATE work_items 
-      SET assigned_to_id = ${userId}::uuid, 
-          version = version + 1,
-          updated_at = NOW()
-      WHERE id = ${workItemId}::uuid 
-        AND assigned_to_id IS NULL 
-        AND version = ${version}
-    `;
-
+  UPDATE work_items
+  SET assigned_to_id = ${userId},
+      version = version + 1,
+      updated_at = NOW()
+  WHERE id = ${workItemId}
+    AND assigned_to_id IS NULL
+    AND version = ${version}
+`;
     if (updateResult === 0) {
       throw new ConflictError(
         'Failed to claim work item. It may have been claimed by another user.'
